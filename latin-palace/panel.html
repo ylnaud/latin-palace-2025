@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Panel de Moderación - Latin Place</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .foto-card {
+            margin-bottom: 20px;
+        }
+        .foto-pendiente {
+            border-left: 5px solid #ffc107;
+        }
+        .foto-aprobada {
+            border-left: 5px solid #198754;
+        }
+        .foto-rechazada {
+            border-left: 5px solid #dc3545;
+        }
+        body {
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card shadow">
+                    <div class="card-header bg-dark text-white">
+                        <h3 class="mb-0">Panel de Moderación de Fotos</h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="loginSection" class="text-center">
+                            <h4 class="mb-4">Iniciar Sesión</h4>
+                            <div class="mb-3">
+                                <input type="password" id="moderadorPassword" class="form-control" placeholder="Contraseña">
+                            </div>
+                            <button id="loginBtn" class="btn btn-primary">Acceder</button>
+                        </div>
+
+                        <div id="moderationPanel" style="display: none;">
+                            <div class="d-flex justify-content-between mb-4">
+                                <h4>Fotos Pendientes</h4>
+                                <div>
+                                    <button id="refreshBtn" class="btn btn-sm btn-outline-secondary">
+                                        <i class="fas fa-sync-alt"></i> Actualizar
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="fotosContainer"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Configuración
+        const CORRECT_PASSWORD = "TuContraseñaSegura123";
+        const SHEETDB_FOTOS = "https://sheetdb.io/api/v1/11dtv4qvqwat2";
+
+        // Elementos del DOM
+        const loginSection = document.getElementById('loginSection');
+        const moderationPanel = document.getElementById('moderationPanel');
+        const loginBtn = document.getElementById('loginBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const fotosContainer = document.getElementById('fotosContainer');
+
+        // Función para generar ID único
+        function generarIdUnico() {
+            return 'foto_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+        }
+
+        // Login
+        loginBtn.addEventListener('click', function() {
+            const password = document.getElementById('moderadorPassword').value;
+            if (password === CORRECT_PASSWORD) {
+                loginSection.style.display = 'none';
+                moderationPanel.style.display = 'block';
+                loadFotos();
+            } else {
+                alert('Contraseña incorrecta');
+            }
+        });
+
+        // Cargar fotos pendientes
+        async function loadFotos() {
+            try {
+                fotosContainer.innerHTML = '<p>Cargando fotos...</p>';
+                const response = await fetch(`${SHEETDB_FOTOS}?search[aprobada]=Pendiente`);
+                
+                if (!response.ok) throw new Error('Error al cargar fotos');
+                
+                const data = await response.json();
+                
+                if (!data || data.length === 0) {
+                    fotosContainer.innerHTML = '<p>No hay fotos pendientes</p>';
+                    return;
+                }
+
+                let html = '';
+                data.forEach(foto => {
+                    const fotoId = foto.id || generarIdUnico();
+                    html += `
+                    <div class="card foto-card foto-pendiente mb-3">
+                        <div class="row g-0">
+                            <div class="col-md-4">
+                                <img src="${foto.url_foto}" class="img-fluid rounded-start" style="max-height: 200px; object-fit: cover;">
+                            </div>
+                            <div class="col-md-8">
+                                <div class="card-body">
+                                    <h5 class="card-title">${foto.nombre_usuario}</h5>
+                                    <p class="card-text">${foto.descripcion || 'Sin descripción'}</p>
+                                    <p class="card-text"><small class="text-muted">Subida: ${new Date(foto.fecha_subida).toLocaleDateString()}</small></p>
+                                    <div class="d-flex justify-content-end">
+                                        <button onclick="aprobarFoto('${fotoId}', ${!foto.id})" class="btn btn-success btn-sm me-2">
+                                            <i class="fas fa-check"></i> Aprobar
+                                        </button>
+                                        <button onclick="rechazarFoto('${fotoId}', ${!foto.id})" class="btn btn-danger btn-sm">
+                                            <i class="fas fa-times"></i> Rechazar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                });
+
+                fotosContainer.innerHTML = html;
+            } catch (error) {
+                console.error('Error:', error);
+                fotosContainer.innerHTML = `
+                    <p class="text-danger">Error al cargar las fotos</p>
+                    <button onclick="loadFotos()" class="btn btn-warning">Reintentar</button>
+                `;
+            }
+        }
+
+        // Aprobar foto
+        async function aprobarFoto(id, esNuevoId = false) {
+            if (!confirm('¿Aprobar esta foto?')) return;
+
+            try {
+                if (esNuevoId) {
+                    // Crear nuevo registro si el ID fue generado
+                    await fetch(SHEETDB_FOTOS, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ data: { id, aprobada: "Aprobada" } })
+                    });
+                } else {
+                    // Actualizar registro existente
+                    await fetch(`${SHEETDB_FOTOS}/id/${id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ data: { aprobada: "Aprobada" } })
+                    });
+                }
+                
+                alert('Foto aprobada');
+                loadFotos();
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error al aprobar la foto');
+            }
+        }
+
+        // Rechazar foto
+        async function rechazarFoto(id, esNuevoId = false) {
+            const motivo = prompt('Motivo del rechazo:');
+            if (motivo === null) return;
+
+            try {
+                if (esNuevoId) {
+                    await fetch(SHEETDB_FOTOS, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            data: { 
+                                id, 
+                                aprobada: "Rechazada",
+                                notas_moderador: motivo 
+                            } 
+                        })
+                    });
+                } else {
+                    await fetch(`${SHEETDB_FOTOS}/id/${id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            data: { 
+                                aprobada: "Rechazada",
+                                notas_moderador: motivo 
+                            } 
+                        })
+                    });
+                }
+                
+                alert('Foto rechazada');
+                loadFotos();
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error al rechazar la foto');
+            }
+        }
+
+        // Event listeners
+        refreshBtn.addEventListener('click', loadFotos);
+
+        // Hacer funciones globales
+        window.aprobarFoto = aprobarFoto;
+        window.rechazarFoto = rechazarFoto;
+        window.loadFotos = loadFotos;
+    </script>
+</body>
+</html>
