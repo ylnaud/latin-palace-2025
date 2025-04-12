@@ -31,3 +31,5 @@ logs/
 # Sistema
 .DS_Store
 Thumbs.db
+certs/
+node_modules/
